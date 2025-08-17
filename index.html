@@ -551,7 +551,223 @@
       bets = [];
       applySettingsToUI(); saveState(); renderBets(); recomputeStats(); renderChart();
     }
+<!-- ⬇️ Adaugă acest bloc JS chiar înainte de // ====== EVENTS ====== -->
+<script>
+// ====== PREDICTOR (API-FOOTBALL + The Odds API) ======
+function slug(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[^a-z0-9]+/g,' ').trim(); }
 
+async function apif(endpoint, params){
+  const key = settings.apisportsKey;
+  if(!key) throw new Error('Lipsește API-FOOTBALL Key.');
+  const url = 'https://v3.football.api-sports.io'+endpoint + (params? ('?'+new URLSearchParams(params)) : '');
+  const res = await fetch(url, { headers:{ 'x-apisports-key': key } });
+  if(!res.ok) throw new Error('API-FOOTBALL error: '+res.status);
+  return res.json();
+}
+
+async function searchTeamByName(q){
+  const data = await apif('/teams', { search:q });
+  return (data.response||[]).map(x=>({ id:x.team.id, name:x.team.name, country:x.team.country }));
+}
+
+async function getH2H(id1,id2, last=25){
+  const data = await apif('/fixtures/headtohead', { h2h:id1+'-'+id2, last });
+  return data.response||[];
+}
+
+async function getTeamLast(teamId, n=10){
+  const data = await apif('/fixtures', { team:teamId, last:n });
+  return data.response||[];
+}
+
+function computeFormGoals(fixtures, teamId){
+  const played = fixtures.filter(f=> f.goals && f.goals.home!=null && f.goals.away!=null);
+  if(played.length===0) return {scored:1.2, conceded:1.2};
+  let gs=0, gc=0;
+  for(const f of played){
+    const isHome = f.teams.home.id===teamId;
+    const mine = isHome? f.goals.home : f.goals.away;
+    const opp  = isHome? f.goals.away : f.goals.home;
+    gs += mine; gc += opp;
+  }
+  return { scored: gs/played.length, conceded: gc/played.length };
+}
+
+function poissonPMF(lambda,k){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
+const factCache=[1]; function factorial(n){ if(factCache[n]!=null) return factCache[n]; let v=factCache[factCache.length-1]; for(let i=factCache.length;i<=n;i++){ v*=i; factCache[i]=v; } return factCache[n]; }
+function distribution(lambda, max=6){ const arr=[]; for(let i=0;i<=max;i++) arr.push(poissonPMF(lambda,i)); return arr; }
+
+function prob1X2(dh, da){
+  let pH=0,pD=0,pA=0, pOver25=0;
+  for(let i=0;i<dh.length;i++){
+    for(let j=0;j<da.length;j++){
+      const p = dh[i]*da[j];
+      if(i>j) pH+=p; else if(i===j) pD+=p; else pA+=p;
+      if(i+j>=3) pOver25+=p;
+    }
+  }
+  return { pH, pD, pA, pOver25, pUnder25: 1-pOver25 };
+}
+
+function evPerUnit(p, odds){ const b=odds-1; const q=1-p; return p*b - q; }
+
+const ODDS_KEY_MAP = {
+  'premier league':'soccer_epl',
+  'la liga':'soccer_spain_la_liga',
+  'serie a':'soccer_italy_serie_a',
+  'bundesliga':'soccer_germany_bundesliga',
+  'ligue 1':'soccer_france_ligue_one',
+  'uefa champions league':'soccer_uefa_champs_league',
+  'uefa europa league':'soccer_uefa_europa_league',
+  'superliga':'soccer_romania_liga_i',
+  'liga i':'soccer_romania_liga_i'
+};
+
+async function fetchOddsForLeague(key){
+  const url = `https://api.the-odds-api.com/v4/sports/${key}/odds?regions=${encodeURIComponent(settings.oddsRegion||'eu')}&markets=h2h,totals&oddsFormat=decimal&dateFormat=iso&apiKey=${encodeURIComponent(settings.oddsApiKey||'')}`;
+  const res = await fetch(url);
+  if(!res.ok) throw new Error('The Odds API error: '+res.status);
+  return res.json();
+}
+function bestOddsForH2H(event){
+  const acc = { home:{odd:0,bookie:''}, draw:{odd:0,bookie:''}, away:{odd:0,bookie:''} };
+  for(const bk of event.bookmakers||[]){
+    const m = (bk.markets||[]).find(m=>m.key==='h2h'); if(!m) continue;
+    for(const o of m.outcomes||[]){
+      const key = o.name && slug(o.name)===slug(event.home_team)? 'home' : (o.name && o.name.toLowerCase()==='draw'? 'draw':'away');
+      if(o.price>acc[key].odd){ acc[key]={ odd:o.price, bookie:bk.title||bk.key } }
+    }
+  }
+  return acc;
+}
+function bestOddsForTotals(event, line=2.5){
+  let over={odd:0,bookie:''}, under={odd:0,bookie:''};
+  for(const bk of event.bookmakers||[]){
+    const m = (bk.markets||[]).find(m=>m.key==='totals'); if(!m) continue;
+    for(const o of m.outcomes||[]){
+      if(o.point==null || Math.abs(o.point-line)>1e-9) continue;
+      if(o.name==='Over'  && o.price>over.odd)  over ={odd:o.price,  bookie:bk.title||bk.key};
+      if(o.name==='Under' && o.price>under.odd) under={odd:o.price, bookie:bk.title||bk.key};
+    }
+  }
+  return {over,under};
+}
+function findEventByTeams(events, homeName, awayName){
+  const sh = slug(homeName), sa = slug(awayName);
+  return events.find(ev=> slug(ev.home_team)===sh && slug(ev.away_team)===sa );
+}
+
+async function runPredictor(){
+  const status = qs('#predictStatus');
+  const out = qs('#predictOut');
+  out.innerHTML=''; status.textContent='';
+  const q = qs('#predictQuery').value.trim();
+  if(!q){ status.textContent='Scrie "Echipă A vs Echipă B".'; return; }
+  if(!settings.apisportsKey || !settings.oddsApiKey){ status.textContent='Adaugă cheile API în cardul "Integrare date live".'; return; }
+
+  // parse echipe
+  const parts = q.split(/vs|v\.s\.| v | - |–|—/i).map(s=>s.trim()).filter(Boolean);
+  if(parts.length<2){ status.textContent='Format: "Echipă A vs Echipă B".'; return; }
+  const teamA = parts[0], teamB = parts[1];
+  status.textContent='Caut echipele...';
+
+  let t1 = (await searchTeamByName(teamA))[0];
+  let t2 = (await searchTeamByName(teamB))[0];
+  if(!t1 || !t2){ status.textContent='Nu am găsit una dintre echipe.'; return; }
+
+  status.textContent='Găsesc meciul și H2H...';
+  const h2h = await getH2H(t1.id, t2.id, 30);
+  if(h2h.length===0){ status.textContent='Nu am găsit H2H/fixture între echipe.'; return; }
+
+  // Alege viitorul meci dacă există, altfel ultimul jucat
+  const nowTs = Date.now()/1000;
+  const upcoming = h2h.filter(f=> f.fixture && f.fixture.timestamp && f.fixture.timestamp>nowTs)
+                      .sort((a,b)=>a.fixture.timestamp-b.fixture.timestamp)[0];
+  const match = upcoming || h2h.sort((a,b)=>b.fixture.timestamp-a.fixture.timestamp)[0];
+  const homeId = match.teams.home.id, awayId = match.teams.away.id;
+  const homeName = match.teams.home.name, awayName = match.teams.away.name;
+  const leagueName = match.league && match.league.name ? match.league.name : '';
+  const whenISO = match.fixture && match.fixture.date ? match.fixture.date : '';
+
+  status.textContent='Calculez forma & Poisson...';
+  const lastHome = await getTeamLast(homeId, 10);
+  const lastAway = await getTeamLast(awayId, 10);
+  const formH = computeFormGoals(lastHome, homeId);
+  const formA = computeFormGoals(lastAway, awayId);
+  const homeAdv = 0.15;
+  const lambdaH = Math.max(0.1, 0.5*(formH.scored + formA.conceded) + homeAdv);
+  const lambdaA = Math.max(0.1, 0.5*(formA.scored + formH.conceded));
+  const dh = distribution(lambdaH), da = distribution(lambdaA);
+  const probs = prob1X2(dh,da);
+
+  status.textContent='Caut cele mai bune cote...';
+  const oddsKey = ODDS_KEY_MAP[slug(leagueName)] || null;
+  let eventOdds=null;
+  if(oddsKey){
+    const events = await fetchOddsForLeague(oddsKey);
+    eventOdds = findEventByTeams(events, homeName, awayName);
+  } else {
+    status.textContent=`Liga "${leagueName}" nu e mapată (momentan). Afișez doar probabilități.`;
+  }
+
+  const picks=[];
+  if(eventOdds){
+    const h2hBest = bestOddsForH2H(eventOdds);
+    const totBest = bestOddsForTotals(eventOdds, 2.5);
+    picks.push({ market:'1X2', selection:`${homeName}`, p:probs.pH, odds:h2hBest.home.odd, bookie:h2hBest.home.bookie });
+    picks.push({ market:'1X2', selection:'X', p:probs.pD, odds:h2hBest.draw.odd, bookie:h2hBest.draw.bookie });
+    picks.push({ market:'1X2', selection:`${awayName}`, p:probs.pA, odds:h2hBest.away.odd, bookie:h2hBest.away.bookie });
+    if(totBest.over.odd)  picks.push({ market:'O/U 2.5', selection:'Over 2.5',  p:probs.pOver25,  odds:totBest.over.odd,  bookie:totBest.over.bookie });
+    if(totBest.under.odd) picks.push({ market:'O/U 2.5', selection:'Under 2.5', p:probs.pUnder25, odds:totBest.under.odd, bookie:totBest.under.bookie });
+  } else {
+    picks.push({ market:'1X2', selection:`${homeName}`, p:probs.pH });
+    picks.push({ market:'1X2', selection:'X',          p:probs.pD });
+    picks.push({ market:'1X2', selection:`${awayName}`, p:probs.pA });
+    picks.push({ market:'O/U 2.5', selection:'Over 2.5',  p:probs.pOver25 });
+    picks.push({ market:'O/U 2.5', selection:'Under 2.5', p:probs.pUnder25 });
+  }
+
+  for(const pk of picks){ if(pk.odds){ pk.ev = evPerUnit(pk.p, pk.odds); } }
+  picks.sort((a,b)=> (b.ev||-1e9) - (a.ev||-1e9));
+
+  let html = `<div class="mb-2">Meci detectat: <strong>${homeName}</strong> vs <strong>${awayName}</strong> • ${leagueName||'Liga necunoscută'} • ${whenISO? new Date(whenISO).toLocaleString() : 'data necunoscută'}</div>`;
+  html += '<div class="overflow-x-auto">';
+  html += '<table class="table w-full"><thead><tr><th class="py-2 px-2">Piață</th><th class="py-2 px-2">Selecție</th><th class="py-2 px-2">Prob. model</th><th class="py-2 px-2">Cota (best)</th><th class="py-2 px-2">Bookie</th><th class="py-2 px-2">EV/unit</th><th class="py-2 px-2">Acțiune</th></tr></thead><tbody>';
+  for(const pk of picks){
+    const evTxt  = (pk.ev!=null && isFinite(pk.ev))? ((pk.ev>=0?'+':'')+pk.ev.toFixed(3)) : '—';
+    const oddTxt = pk.odds? pk.odds.toFixed(2) : '—';
+    const book   = pk.bookie||'—';
+    html += `<tr><td class="py-2 px-2">${pk.market}</td><td class="py-2 px-2">${pk.selection}</td><td class="py-2 px-2">${(pk.p*100).toFixed(1)}%</td><td class="py-2 px-2">${oddTxt}</td><td class="py-2 px-2">${book}</td><td class="py-2 px-2">${evTxt}</td><td class="py-2 px-2"><button class="btn btn-ghost text-sm" data-prep="1" data-market="${pk.market}" data-sel="${pk.selection}" data-odds="${pk.odds||''}" data-bookie="${book}">Trimite la Evaluator</button></td></tr>`;
+  }
+  html += '</tbody></table></div>';
+  qs('#predictOut').innerHTML = html;
+
+  qsa('[data-prep="1"]', qs('#predictOut')).forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const m = btn.dataset.market, s = btn.dataset.sel, o = parseFloat(btn.dataset.odds)||NaN, b = btn.dataset.bookie||'';
+      qs('#eventName').value = `${homeName} vs ${awayName}`;
+      qs('#market').value    = (m==='1X2'? '1X2' : (m.startsWith('O/U')? '2way':'1X2'));
+      qs('#selection').value = s.replace(`${homeName}`,'1').replace(`${awayName}`,'2');
+      if(isFinite(o)) qs('#odds').value = o.toFixed(2);
+      qs('#bookie').value = b;
+      window.scrollTo({ top: qs('#market').getBoundingClientRect().top + window.scrollY - 120, behavior:'smooth' });
+    });
+  });
+
+  status.textContent = 'Gata.';
+}
+
+// câmpuri API UI
+function applyApiToUI(){
+  const k1 = qs('#apisportsKey'); if(k1) k1.value = settings.apisportsKey||'';
+  const k2 = qs('#oddsApiKey');   if(k2) k2.value = settings.oddsApiKey||'';
+  const r  = qs('#oddsRegion');   if(r)  r.value  = settings.oddsRegion||'eu';
+}
+function readApiFromUI(){
+  const k1 = qs('#apisportsKey'); if(k1) settings.apisportsKey = k1.value.trim();
+  const k2 = qs('#oddsApiKey');   if(k2) settings.oddsApiKey   = k2.value.trim();
+  const r  = qs('#oddsRegion');   if(r)  settings.oddsRegion   = r.value;
+}
     // ====== EVENTS ======
     window.addEventListener('DOMContentLoaded', ()=>{
       loadState();
@@ -574,3 +790,4 @@
   </script>
 </body>
 </html>
+
