@@ -3,791 +3,201 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Asistent Pronosticuri & Tracker Pariuri</title>
+  <title>Pronosticuri Lite</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root{--bg:#0b1220;--card:#111a2e;--muted:#8aa0bf;--accent:#4f7cff;--ok:#14b8a6;--warn:#f59e0b;--err:#ef4444}
-    html,body{height:100%}
-    body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,"Noto Sans",sans-serif; background:linear-gradient(180deg,#0b1220 0%,#0d1424 100%); color:#e5edff}
-    .card{background:linear-gradient(180deg,#111a2e 0%,#0f1729 100%); border:1px solid rgba(255,255,255,0.06); box-shadow:0 8px 24px rgba(0,0,0,0.35)}
-    .input{background:#0f1730;border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:10px 12px}
+    body{background:#0b1220;color:#e5edff;font-family:ui-sans-serif,system-ui,Inter,Segoe UI,Roboto}
+    .card{background:#111a2e;border:1px solid rgba(255,255,255,.08);border-radius:16px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+    .input{background:#0f1730;border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:10px 12px;width:100%}
     .btn{border-radius:12px;padding:10px 14px;font-weight:600}
-    .btn-primary{background:var(--accent);color:#fff}
-    .btn-ghost{background:transparent;border:1px solid rgba(255,255,255,0.12)}
-    .badge{border-radius:999px;padding:4px 10px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1)}
-    .table th{font-weight:600;color:#b8c6e3}
-    .table td,.table th{border-bottom:1px solid rgba(255,255,255,0.06)}
-    .grid-gap{gap:18px}
-    .hint{color:var(--muted);font-size:12px}
+    .btn-primary{background:#4f7cff;color:#fff}
+    .hint{color:#8aa0bf}
+    .badge{border-radius:999px;padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);font-size:12px}
+    a.link{color:#9db4ff}
   </style>
 </head>
 <body class="min-h-screen">
-  <header class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex items-center justify-between">
+  <header class="max-w-3xl mx-auto px-4 py-6 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">🏆</div>
+      <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">⚽</div>
       <div>
-        <h1 class="text-xl font-bold tracking-tight">Asistent Pronosticuri & Tracker Pariuri</h1>
-        <p class="hint">Calcule EV, probabilități implicite, Kelly și management bankroll. <span class="badge">single-file</span></p>
+        <h1 class="text-xl font-bold">Pronosticuri Lite</h1>
+        <p class="hint text-sm">Scrii meciul → apeși Evaluează → primești pronosticul cu probabilități + cele mai bune cote.</p>
       </div>
     </div>
-    <div class="flex items-center gap-2">
-      <button id="btnExport" class="btn btn-ghost">Export CSV</button>
-      <label class="btn btn-ghost cursor-pointer">Import CSV<input id="importFile" type="file" accept=".csv" class="hidden"></label>
-      <button id="btnReset" class="btn btn-ghost" title="Resetare aplicație">Reset</button>
-    </div>
+    <button id="btnToggleApi" class="btn">⚙️ Setări API</button>
   </header>
 
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-    <!-- Top grid -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 grid-gap">
-      <!-- Config & Bankroll -->
-      <div class="card rounded-2xl p-5 lg:col-span-1">
-        <h2 class="text-lg font-semibold mb-3">Setări & Bankroll</h2>
-        <div class="space-y-4">
-          <div>
-            <label class="block text-sm mb-1">Monedă afișare</label>
-            <select id="currency" class="input w-full">
-              <option value="EUR">EUR (€)</option>
-              <option value="RON">RON (lei)</option>
-              <option value="USD">USD ($)</option>
-              <option value="GBP">GBP (£)</option>
-            </select>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-sm mb-1">Bankroll curent</label>
-              <input id="bankroll" type="number" step="0.01" class="input w-full" placeholder="1000" />
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Fracție Kelly</label>
-              <select id="kellyFraction" class="input w-full">
-                <option value="1">1× (Kelly complet)</option>
-                <option value="0.5">0.5× (jumătate)</option>
-                <option value="0.33">0.33× (treime)</option>
-                <option value="0.25">0.25× (sfert)</option>
-                <option value="0">0× (stake manual)</option>
-              </select>
-            </div>
-          </div>
-          <div class="flex items-center justify-between">
-            <span class="hint">Salvat automat în browser (localStorage).</span>
-            <button id="btnSaveSettings" class="btn btn-primary">Salvează</button>
-          </div>
-          <div class="mt-4 grid grid-cols-3 gap-3">
-            <div class="rounded-xl p-3 bg-white/5 border border-white/10">
-              <div class="hint">Total mize</div>
-              <div id="statStaked" class="text-xl font-semibold">–</div>
-            </div>
-            <div class="rounded-xl p-3 bg-white/5 border border-white/10">
-              <div class="hint">Profit</div>
-              <div id="statProfit" class="text-xl font-semibold">–</div>
-            </div>
-            <div class="rounded-xl p-3 bg-white/5 border border-white/10">
-              <div class="hint">ROI</div>
-              <div id="statROI" class="text-xl font-semibold">–</div>
-            </div>
-          </div>
+  <main class="max-w-3xl mx-auto px-4 pb-16">
+    <!-- Setări API (pliabil) -->
+    <section id="apiPanel" class="card p-4 mb-4 hidden">
+      <h2 class="font-semibold mb-2">Setări API</h2>
+      <p class="hint text-sm mb-3">Cheile sunt salvate local în browser. Pentru producție, folosește un proxy/server.</p>
+      <div class="grid md:grid-cols-3 gap-3">
+        <div>
+          <label class="text-sm">API-FOOTBALL Key</label>
+          <input id="apisportsKey" class="input" placeholder="api-sports.io" />
         </div>
-        <p class="hint mt-4">Atenție: pariurile implică risc. Nu paria mai mult decât îți permiți să pierzi. Acest instrument nu garantează profit.</p>
+        <div>
+          <label class="text-sm">The Odds API Key</label>
+          <input id="oddsApiKey" class="input" placeholder="the-odds-api.com" />
+        </div>
+        <div>
+          <label class="text-sm">Regiune cote</label>
+          <select id="oddsRegion" class="input">
+            <option value="eu">EU</option>
+            <option value="uk">UK</option>
+            <option value="us">US</option>
+            <option value="au">AU</option>
+          </select>
+        </div>
       </div>
-
-      <!-- Evaluator pariu -->
-      <div class="card rounded-2xl p-5 lg:col-span-2">
-        <h2 class="text-lg font-semibold mb-3">Evaluator de valoare (EV) & Stake recomandat</h2>
-        <div class="grid md:grid-cols-2 gap-4">
-          <div class="space-y-3">
-            <div>
-              <label class="block text-sm mb-1">Eveniment</label>
-              <input id="eventName" class="input w-full" placeholder="Ex: FCSB vs CFR Cluj"/>
-            </div>
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label class="block text-sm mb-1">Piață</label>
-                <select id="market" class="input w-full">
-                  <option value="1X2">1X2 (3 căi)</option>
-                  <option value="2way">2-way (Ex: Peste/Sub, Tenis)</option>
-                  <option value="AH">Asian Handicap (2 căi)</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-sm mb-1">Selecție</label>
-                <input id="selection" class="input w-full" placeholder="Ex: 1 / X / 2 / Peste 2.5 / +0.5 etc." />
-              </div>
-            </div>
-            <div class="grid grid-cols-3 gap-3">
-              <div>
-                <label class="block text-sm mb-1">Cota (decimal)</label>
-                <input id="odds" type="number" step="0.01" class="input w-full" placeholder="1.95" />
-              </div>
-              <div>
-                <label class="block text-sm mb-1">Bookmaker</label>
-                <input id="bookie" class="input w-full" placeholder="Ex: Bet365" />
-              </div>
-              <div>
-                <label class="block text-sm mb-1">Stake (opțional)</label>
-                <input id="stakeManual" type="number" step="0.01" class="input w-full" placeholder="0 dacă folosești Kelly" />
-              </div>
-            </div>
-            <div>
-              <label class="block text-sm mb-1">Prob. estimată de tine (%)</label>
-              <input id="probUser" type="number" step="0.01" class="input w-full" placeholder="Ex: 54" />
-              <div class="hint mt-1">Dacă o lași goală, poți folosi "Asistent marjă bookmaker" ca ajutor.</div>
-            </div>
-            <div class="flex items-center gap-2">
-              <button id="btnEvaluate" class="btn btn-primary">Evaluează</button>
-              <button id="btnAddBet" class="btn btn-ghost" disabled>Adaugă în tracker</button>
-            </div>
-          </div>
-
-          <div>
-            <div class="rounded-xl p-4 bg-white/5 border border-white/10">
-              <h3 class="font-semibold mb-2">Rezultate evaluare</h3>
-              <dl class="grid grid-cols-2 gap-3 text-sm">
-                <dt class="hint">Prob. break-even</dt>
-                <dd id="outBreakeven">–</dd>
-                <dt class="hint">Prob. ta (p)</dt>
-                <dd id="outUserP">–</dd>
-                <dt class="hint">EV per unitate</dt>
-                <dd id="outEV">–</dd>
-                <dt class="hint">Kelly (f*)</dt>
-                <dd id="outKelly">–</dd>
-                <dt class="hint">Stake recomandat</dt>
-                <dd id="outStake">–</dd>
-                <dt class="hint">Fair odds (opțional)</dt>
-                <dd id="outFairOdds">–</dd>
-              </dl>
-            </div>
-
-            <div class="rounded-xl p-4 bg-white/5 border border-white/10 mt-4">
-              <h3 class="font-semibold mb-2">Asistent marjă bookmaker (normalizează 1X2 / 2-way)</h3>
-              <div id="helper2w" class="space-y-2">
-                <div class="grid grid-cols-2 gap-2">
-                  <input id="h2_o1" class="input" placeholder="Cota A (ex: 1.83)">
-                  <input id="h2_o2" class="input" placeholder="Cota B (ex: 2.00)">
-                </div>
-                <button id="btnH2" class="btn btn-ghost w-full">Normalizează 2-way</button>
-                <div class="hint">Returnează probabilități "fair" (fără marjă) și cote fair.</div>
-                <div id="h2_out" class="text-sm"></div>
-              </div>
-              <hr class="my-3 border-white/10">
-              <div id="helper3w" class="space-y-2">
-                <div class="grid grid-cols-3 gap-2">
-                  <input id="h3_o1" class="input" placeholder="1 (ex: 2.40)">
-                  <input id="h3_oX" class="input" placeholder="X (ex: 3.20)">
-                  <input id="h3_o2" class="input" placeholder="2 (ex: 2.90)">
-                </div>
-                <button id="btnH3" class="btn btn-ghost w-full">Normalizează 1X2</button>
-                <div class="hint">Ajustează pentru overround și dă cote/șanse fair pentru fiecare rezultat.</div>
-                <div id="h3_out" class="text-sm"></div>
-              </div>
-            </div>
-          </div>
-        </div>
+      <div class="mt-3 flex gap-2">
+        <button id="btnSaveApi" class="btn btn-primary">Salvează</button>
+        <span id="saveMsg" class="hint"></span>
       </div>
     </section>
 
-    <!-- Tracker & Chart -->
-    <section class="grid grid-cols-1 lg:grid-cols-3 grid-gap mt-6">
-      <div class="card rounded-2xl p-5 lg:col-span-2">
-        <div class="flex items-center justify-between mb-3">
-          <h2 class="text-lg font-semibold">Tracker pariuri</h2>
-          <div class="flex items-center gap-2">
-            <select id="filterStatus" class="input">
-              <option value="all">Toate</option>
-              <option value="pending">În așteptare</option>
-              <option value="won">Câștigate</option>
-              <option value="lost">Pierdute</option>
-            </select>
-            <input id="search" class="input" placeholder="Caută eveniment / bookie / selecție">
-          </div>
-        </div>
-        <div class="overflow-x-auto">
-          <table class="table w-full text-sm">
-            <thead>
-              <tr>
-                <th class="py-2 px-2">Data</th>
-                <th class="py-2 px-2">Eveniment</th>
-                <th class="py-2 px-2">Selecție</th>
-                <th class="py-2 px-2">Cota</th>
-                <th class="py-2 px-2">Stake</th>
-                <th class="py-2 px-2">Bookie</th>
-                <th class="py-2 px-2">EV</th>
-                <th class="py-2 px-2">Status</th>
-                <th class="py-2 px-2">Profit</th>
-                <th class="py-2 px-2">Acțiuni</th>
-              </tr>
-            </thead>
-            <tbody id="betsTbody"></tbody>
-          </table>
-        </div>
-      </div>
-      <div class="card rounded-2xl p-5">
-        <h2 class="text-lg font-semibold mb-3">Evoluție bankroll</h2>
-        <canvas id="bankrollChart" height="280"></canvas>
-      </div>
+    <!-- Formular ultra-simplu -->
+    <section class="card p-5">
+      <label class="block text-sm mb-1">Meci</label>
+      <input id="matchInput" class="input mb-3" placeholder="Ex: FCSB vs CFR Cluj" />
+      <button id="btnEvaluate" class="btn btn-primary w-full">Evaluează</button>
+      <div id="status" class="hint mt-3"></div>
+    </section>
+
+    <!-- Rezultate -->
+    <section id="results" class="card p-5 mt-5 hidden">
+      <div id="matchMeta" class="mb-3 text-sm"></div>
+      <div id="tableWrap" class="overflow-x-auto"></div>
+      <div class="mt-3 text-xs hint">Atenție: pronosticul este experimental și nu garantează profit.</div>
     </section>
   </main>
 
-  <template id="rowTemplate">
-    <tr class="align-top">
-      <td class="py-2 px-2 text-nowrap"><span data-k="date"></span></td>
-      <td class="py-2 px-2"><div class="font-medium" data-k="event"></div><div class="hint" data-k="market"></div></td>
-      <td class="py-2 px-2" data-k="selection"></td>
-      <td class="py-2 px-2" data-k="odds"></td>
-      <td class="py-2 px-2" data-k="stake"></td>
-      <td class="py-2 px-2" data-k="bookie"></td>
-      <td class="py-2 px-2" data-k="ev"></td>
-      <td class="py-2 px-2">
-        <select class="input text-sm" data-k="status">
-          <option value="pending">în așteptare</option>
-          <option value="won">câștigat</option>
-          <option value="lost">pierdut</option>
-        </select>
-      </td>
-      <td class="py-2 px-2" data-k="profit"></td>
-      <td class="py-2 px-2">
-        <div class="flex gap-2">
-          <button class="btn btn-ghost text-sm" data-action="settle">Setează rezultat</button>
-          <button class="btn btn-ghost text-sm" data-action="delete">Șterge</button>
-        </div>
-      </td>
-    </tr>
-  </template>
-
   <script>
-    // ====== UTIL ======
-    const qs = (s, el=document) => el.querySelector(s);
-    const qsa = (s, el=document) => Array.from(el.querySelectorAll(s));
-    const fmtPct = (x, digits=2) => isFinite(x) ? (x*100).toFixed(digits)+"%" : "–";
-    const fmtMoney = (x, cur) => isFinite(x) ? new Intl.NumberFormat('ro-RO',{style:'currency',currency:cur}).format(x) : "–";
-    const nowISO = () => new Date().toISOString().slice(0,16).replace('T',' ');
-    const parseNum = v => { const n = parseFloat(v); return isFinite(n) ? n : NaN };
+    // ===== STATE =====
+    const SKEY = 'plite_settings_v1';
+    let settings = { apisportsKey:'', oddsApiKey:'', oddsRegion:'eu' };
+    try{ const s=JSON.parse(localStorage.getItem(SKEY)||'null'); if(s) settings={...settings,...s}; }catch{}
+    function save(){ localStorage.setItem(SKEY, JSON.stringify(settings)); }
 
-    // ====== STATE ======
-    const SKEY = {
-      SETTINGS: 'sb_settings_v1',
-      BETS: 'sb_bets_v1'
-    };
-    let settings = { currency:'EUR', bankroll:1000, kellyFraction:0.5 };
-    let bets = [];
+    // ===== UI =====
+    const qs = (s,el=document)=>el.querySelector(s);
+    const qsa=(s,el=document)=>Array.from(el.querySelectorAll(s));
+    function toggle(el){ el.classList.toggle('hidden'); }
 
-    function loadState(){
-      try{
-        const s = JSON.parse(localStorage.getItem(SKEY.SETTINGS)||'null');
-        if(s) settings = {...settings, ...s};
-        const b = JSON.parse(localStorage.getItem(SKEY.BETS)||'null');
-        if(Array.isArray(b)) bets = b; else bets = [];
-      }catch(e){ console.error(e); }
-    }
-    function saveState(){
-      localStorage.setItem(SKEY.SETTINGS, JSON.stringify(settings));
-      localStorage.setItem(SKEY.BETS, JSON.stringify(bets));
+    qs('#btnToggleApi').addEventListener('click',()=>toggle(qs('#apiPanel')));
+    qs('#btnSaveApi').addEventListener('click',()=>{ settings.apisportsKey=qs('#apisportsKey').value.trim(); settings.oddsApiKey=qs('#oddsApiKey').value.trim(); settings.oddsRegion=qs('#oddsRegion').value; save(); qs('#saveMsg').textContent='Salvat.'; setTimeout(()=>qs('#saveMsg').textContent='',1500); });
+    // preload values
+    qs('#apisportsKey').value=settings.apisportsKey||''; qs('#oddsApiKey').value=settings.oddsApiKey||''; qs('#oddsRegion').value=settings.oddsRegion||'eu';
+
+    // ===== CORE (Predictor) =====
+    function slug(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[^a-z0-9]+/g,' ').trim(); }
+
+    async function apif(endpoint, params){
+      if(!settings.apisportsKey) throw new Error('Lipsește API-FOOTBALL Key.');
+      const url = 'https://v3.football.api-sports.io'+endpoint + (params? ('?'+new URLSearchParams(params)) : '');
+      const res = await fetch(url, { headers:{ 'x-apisports-key': settings.apisportsKey } });
+      if(!res.ok) throw new Error('API-FOOTBALL: '+res.status);
+      return res.json();
     }
 
-    // ====== CALC ======
-    function breakevenProb(odds){ return (odds>1)? 1/odds : NaN }
-    function expectedValuePerUnit(p, odds){
-      const b = odds - 1; const q = 1 - p; return p*b - q; // per unit stake
+    async function searchTeamByName(q){
+      const data = await apif('/teams', { search:q });
+      return (data.response||[]).map(x=>({ id:x.team.id, name:x.team.name }));
     }
-    function kellyFraction(p, odds){ // full Kelly fraction of bankroll
-      const b = odds - 1; const q = 1 - p;
-      const f = (b*p - q) / b;
-      return Math.max(0, Math.min(1, f));
+    async function getH2H(id1,id2,last=25){
+      const data = await apif('/fixtures/headtohead', { h2h:id1+'-'+id2, last });
+      return data.response||[];
     }
-
-    function normalize2way(o1,o2){
-      const p1=1/o1, p2=1/o2; const s=p1+p2; return {p1:p1/s, p2:p2/s, fair1:1/(p1/s), fair2:1/(p2/s), overround:s-1};
-    }
-    function normalize3way(o1,oX,o2){
-      const p1=1/o1, pX=1/oX, p2=1/o2; const s=p1+pX+p2; return {
-        p1:p1/s, pX:pX/s, p2:p2/s,
-        fair1:1/(p1/s), fairX:1/(pX/s), fair2:1/(p2/s),
-        overround:s-1
-      };
+    async function getTeamLast(teamId,n=10){
+      const data = await apif('/fixtures', { team:teamId, last:n });
+      return data.response||[];
     }
 
-    function recomputeStats(){
-      const cur = settings.currency;
-      const staked = bets.reduce((a,b)=>a + (b.stake||0), 0);
-      const profit = bets.reduce((a,b)=>a + (b.profit||0), 0);
-      const roi = staked>0 ? profit/staked : 0;
-      qs('#statStaked').textContent = fmtMoney(staked, cur);
-      const profitEl = qs('#statProfit');
-      profitEl.textContent = fmtMoney(profit, cur);
-      profitEl.style.color = profit>0? 'var(--ok)': profit<0? 'var(--err)':'#e5edff';
-      qs('#statROI').textContent = fmtPct(roi);
+    function computeFormGoals(fixtures, teamId){
+      const played = fixtures.filter(f=> f.goals && f.goals.home!=null && f.goals.away!=null);
+      if(played.length===0) return {scored:1.2, conceded:1.2};
+      let gs=0,gc=0; for(const f of played){ const isHome=f.teams.home.id===teamId; const mine=isHome?f.goals.home:f.goals.away; const opp=isHome?f.goals.away:f.goals.home; gs+=mine; gc+=opp; }
+      return { scored: gs/played.length, conceded: gc/played.length };
     }
+    function poissonPMF(lambda,k){ return Math.exp(-lambda)*Math.pow(lambda,k)/factorial(k); }
+    const fact=[1]; function factorial(n){ if(fact[n]!=null) return fact[n]; let v=fact[fact.length-1]; for(let i=fact.length;i<=n;i++){ v*=i; fact[i]=v; } return fact[n]; }
+    function distribution(lambda,max=6){ const arr=[]; for(let i=0;i<=max;i++) arr.push(poissonPMF(lambda,i)); return arr; }
+    function prob1X2(dh,da){ let pH=0,pD=0,pA=0,pOver25=0; for(let i=0;i<dh.length;i++){ for(let j=0;j<da.length;j++){ const p=dh[i]*da[j]; if(i>j)pH+=p; else if(i===j)pD+=p; else pA+=p; if(i+j>=3)pOver25+=p; } } return {pH,pD,pA,pOver25,pUnder25:1-pOver25}; }
 
-    function computeBankrollSeries(){
-      let bank = settings.bankroll;
-      const series = [{t:0, y:bank, label:'Start'}];
-      // apply settled bets in chronological order
-      const settled = bets.filter(b=>b.status!=='pending').sort((a,b)=> new Date(a.date) - new Date(b.date));
-      settled.forEach((bet,i)=>{
-        bank += bet.profit||0; series.push({t:i+1, y:bank, label:bet.event});
-      });
-      return series;
+    const ODDS_KEY_MAP={
+      'premier league':'soccer_epl','la liga':'soccer_spain_la_liga','serie a':'soccer_italy_serie_a','bundesliga':'soccer_germany_bundesliga','ligue 1':'soccer_france_ligue_one','uefa champions league':'soccer_uefa_champs_league','uefa europa league':'soccer_uefa_europa_league','superliga':'soccer_romania_liga_i','liga i':'soccer_romania_liga_i'};
+    async function fetchOddsForLeague(key){
+      if(!settings.oddsApiKey) throw new Error('Lipsește The Odds API Key.');
+      const url=`https://api.the-odds-api.com/v4/sports/${key}/odds?regions=${encodeURIComponent(settings.oddsRegion||'eu')}&markets=h2h,totals&oddsFormat=decimal&dateFormat=iso&apiKey=${encodeURIComponent(settings.oddsApiKey)}`;
+      const res=await fetch(url); if(!res.ok) throw new Error('The Odds API: '+res.status); return res.json();
     }
+    function bestOddsForH2H(event){ const acc={home:{odd:0,bookie:''},draw:{odd:0,bookie:''},away:{odd:0,bookie:''}}; for(const bk of event.bookmakers||[]){ const m=(bk.markets||[]).find(m=>m.key==='h2h'); if(!m) continue; for(const o of m.outcomes||[]){ const key=o.name && slug(o.name)===slug(event.home_team)?'home':(o.name && o.name.toLowerCase()==='draw'?'draw':'away'); if(o.price>acc[key].odd){ acc[key]={odd:o.price,bookie:bk.title||bk.key}; } } } return acc; }
+    function bestOddsForTotals(event,line=2.5){ let over={odd:0,bookie:''},under={odd:0,bookie:''}; for(const bk of event.bookmakers||[]){ const m=(bk.markets||[]).find(m=>m.key==='totals'); if(!m) continue; for(const o of m.outcomes||[]){ if(o.point==null||Math.abs(o.point-line)>1e-9) continue; if(o.name==='Over'&&o.price>over.odd) over={odd:o.price,bookie:bk.title||bk.key}; if(o.name==='Under'&&o.price>under.odd) under={odd:o.price,bookie:bk.title||bk.key}; } } return {over,under}; }
+    function findEventByTeams(events,homeName,awayName){ const sh=slug(homeName), sa=slug(awayName); return events.find(ev=> slug(ev.home_team)===sh && slug(ev.away_team)===sa ); }
+    function evPerUnit(p,odds){ const b=odds-1, q=1-p; return p*b - q; }
 
-    // ====== UI BINDINGS ======
-    let chart;
-    function renderChart(){
-      const ctx = qs('#bankrollChart');
-      // Fallback dacă Chart.js nu e disponibil (ex: blocat de rețea)
-      if(!window.Chart){
-        const container = ctx.parentElement;
-        const old = container.querySelector('.chart-fallback');
-        if(!old){
-          const p = document.createElement('p');
-          p.className = 'hint chart-fallback mt-2';
-          p.textContent = 'Grafic indisponibil (Chart.js nu a încărcat). Poți folosi aplicația fără grafic.';
-          container.appendChild(p);
-        }
-        return;
-      }
-      const data = computeBankrollSeries();
-      const labels = data.map(d=>d.label);
-      const values = data.map(d=>d.y);
-      try{ if(chart){ chart.destroy(); } }catch(e){
+    async function evaluateMatch(q){
+      const status=qs('#status'); const results=qs('#results'); const tableWrap=qs('#tableWrap'); const meta=qs('#matchMeta');
+      results.classList.add('hidden'); status.textContent=''; tableWrap.innerHTML=''; meta.innerHTML='';
+      if(!q){ status.textContent='Scrie "Echipă A vs Echipă B".'; return; }
+      if(!settings.apisportsKey){ status.textContent='Completează API-FOOTBALL Key (⚙️ Sus-dreapta).'; return; }
 
-    function applySettingsToUI(){
-      qs('#currency').value = settings.currency;
-      qs('#bankroll').value = settings.bankroll;
-      qs('#kellyFraction').value = settings.kellyFraction;
-    }
+      // parse echipe
+      const parts=q.split(/vs|v\.s\.| v | - |–|—/i).map(s=>s.trim()).filter(Boolean);
+      if(parts.length<2){ status.textContent='Format: "Echipă A vs Echipă B".'; return; }
+      const teamA=parts[0], teamB=parts[1];
+      status.textContent='Caut echipele...';
+      const t1=(await searchTeamByName(teamA))[0]; const t2=(await searchTeamByName(teamB))[0];
+      if(!t1||!t2){ status.textContent='Nu am găsit una dintre echipe.'; return; }
 
-    function readSettingsFromUI(){
-      settings.currency = qs('#currency').value;
-      settings.bankroll = parseFloat(qs('#bankroll').value)||0;
-      settings.kellyFraction = parseFloat(qs('#kellyFraction').value)||0;
-    }
+      status.textContent='Găsesc H2H și forma...';
+      const h2h=await getH2H(t1.id,t2.id,30);
+      if(h2h.length===0){ status.textContent='Nu am găsit H2H/fixture.'; return; }
+      const nowTs=Date.now()/1000;
+      const upcoming=h2h.filter(f=>f.fixture&&f.fixture.timestamp>nowTs).sort((a,b)=>a.fixture.timestamp-b.fixture.timestamp)[0];
+      const match=upcoming||h2h.sort((a,b)=>b.fixture.timestamp-a.fixture.timestamp)[0];
+      const homeId=match.teams.home.id, awayId=match.teams.away.id;
+      const homeName=match.teams.home.name, awayName=match.teams.away.name;
+      const leagueName=match.league&&match.league.name?match.league.name:'';
+      const whenISO=match.fixture&&match.fixture.date?match.fixture.date:'';
 
-    function renderBets(){
-      const tbody = qs('#betsTbody');
-      tbody.innerHTML = '';
-      const fStatus = qs('#filterStatus').value;
-      const q = qs('#search').value.trim().toLowerCase();
-      const cur = settings.currency;
+      const lastHome=await getTeamLast(homeId,10); const lastAway=await getTeamLast(awayId,10);
+      const formH=computeFormGoals(lastHome,homeId); const formA=computeFormGoals(lastAway,awayId);
+      const homeAdv=0.15; const lambdaH=Math.max(0.1,0.5*(formH.scored+formA.conceded)+homeAdv); const lambdaA=Math.max(0.1,0.5*(formA.scored+formH.conceded));
+      const dh=distribution(lambdaH), da=distribution(lambdaA); const probs=prob1X2(dh,da);
 
-      const filtered = bets.filter(b=>{
-        const statusOk = fStatus==='all' || b.status===fStatus;
-        const text = (b.event+' '+b.selection+' '+(b.bookie||'')).toLowerCase();
-        const qOk = !q || text.includes(q);
-        return statusOk && qOk;
-      }).sort((a,b)=> new Date(b.date) - new Date(a.date));
+      // odds
+      let picks=[]; let eventOdds=null; let noteOdds='';
+      const key=ODDS_KEY_MAP[slug(leagueName)]||null;
+      if(settings.oddsApiKey && key){ try{ const events=await fetchOddsForLeague(key); eventOdds=findEventByTeams(events,homeName,awayName); }catch(e){ noteOdds=e.message; } }
 
-      filtered.forEach(bet=>{
-        const tpl = qs('#rowTemplate').content.cloneNode(true);
-        const root = tpl.querySelector('tr');
-        root.dataset.id = bet.id;
-        tpl.querySelector('[data-k="date"]').textContent = bet.date.replace('T',' ');
-        tpl.querySelector('[data-k="event"]').textContent = bet.event;
-        tpl.querySelector('[data-k="market"]').textContent = bet.market;
-        tpl.querySelector('[data-k="selection"]').textContent = bet.selection;
-        tpl.querySelector('[data-k="odds"]').textContent = bet.odds.toFixed(2);
-        tpl.querySelector('[data-k="stake"]').textContent = bet.stake ? fmtMoney(bet.stake, cur) : '—';
-        tpl.querySelector('[data-k="bookie"]').textContent = bet.bookie || '—';
-        tpl.querySelector('[data-k="ev"]').textContent = isFinite(bet.ev) ? (bet.ev>=0? '+' : '') + bet.ev.toFixed(3) : '—';
-        const sel = tpl.querySelector('[data-k="status"]');
-        sel.value = bet.status;
-        sel.addEventListener('change',()=>{
-          bet.status = sel.value; settleIfPossible(bet); saveState(); recomputeStats(); renderBets(); renderChart();
-        });
-        const profitEl = tpl.querySelector('[data-k="profit"]');
-        profitEl.textContent = isFinite(bet.profit) ? fmtMoney(bet.profit, cur) : '—';
-        profitEl.style.color = (bet.profit||0)>0? 'var(--ok)': (bet.profit||0)<0? 'var(--err)':'#e5edff';
-
-        tpl.querySelector('[data-action="delete"]').addEventListener('click',()=>{
-          bets = bets.filter(x=>x.id!==bet.id); saveState(); renderBets(); recomputeStats(); renderChart();
-        });
-        tpl.querySelector('[data-action="settle"]').addEventListener('click',()=>{
-          settleIfPossible(bet); saveState(); renderBets(); recomputeStats(); renderChart();
-        });
-        tbody.appendChild(tpl);
-      });
-    }
-
-    function settleIfPossible(bet){
-      // compute profit if stake and status available
-      if(!isFinite(bet.stake) || !(bet.status==='won' || bet.status==='lost')) return;
-      if(bet.status==='won') bet.profit = bet.stake * (bet.odds - 1);
-      else bet.profit = -bet.stake;
-    }
-
-    function uuid(){ return 'b'+Math.random().toString(36).slice(2,9)+Date.now().toString(36) }
-
-    // ====== EVALUATOR ======
-    let lastEval = null;
-    function doEvaluate(){
-      const eventName = qs('#eventName').value.trim();
-      const market = qs('#market').value;
-      const selection = qs('#selection').value.trim();
-      const odds = parseNum(qs('#odds').value);
-      const bookie = qs('#bookie').value.trim();
-      const stakeManual = parseNum(qs('#stakeManual').value);
-      let pUser = parseNum(qs('#probUser').value); // percent
-      if(isFinite(pUser)) pUser = pUser/100;
-
-      if(!isFinite(odds) || odds<=1){ alert('Te rog introdu o cotă validă (>1).'); return; }
-
-      const pBE = breakevenProb(odds);
-      if(!isFinite(pUser)){
-        // if user prob missing, offer to use helper results if present (from normalize blocks)
-        const fair = window.__lastFairForSelection; // {p, fairOdds}
-        if(fair && isFinite(fair.p)) pUser = fair.p; // assistance only
-      }
-
-      const pDisplay = isFinite(pUser) ? pUser : NaN;
-      const EV = isFinite(pUser) ? expectedValuePerUnit(pUser, odds) : NaN;
-      const kFull = isFinite(pUser) ? kellyFraction(pUser, odds) : 0;
-      const kUse = kFull * (parseFloat(qs('#kellyFraction').value)||0);
-      const stakeRec = isFinite(kUse) && isFinite(settings.bankroll) ? settings.bankroll * kUse : NaN;
-
-      // UI out
-      qs('#outBreakeven').textContent = fmtPct(pBE);
-      qs('#outUserP').textContent = isFinite(pDisplay)? fmtPct(pDisplay) : '—';
-      qs('#outEV').textContent = isFinite(EV)? ((EV>=0? '+':'') + EV.toFixed(3) + ' / unitate') : '—';
-      qs('#outKelly').textContent = isFinite(kFull)? (kFull.toFixed(3) + ' (x ' + (qs('#kellyFraction').value) + ')') : '—';
-      qs('#outStake').textContent = isFinite(stakeRec)? fmtMoney(stakeRec, settings.currency) : (isFinite(stakeManual)? fmtMoney(stakeManual, settings.currency) : '—');
-
-      // fair odds from helper if available
-      if(window.__lastFairForSelection && isFinite(window.__lastFairForSelection.fairOdds)){
-        qs('#outFairOdds').textContent = window.__lastFairForSelection.fairOdds.toFixed(2);
+      if(eventOdds){
+        const hBest=bestOddsForH2H(eventOdds); const tBest=bestOddsForTotals(eventOdds,2.5);
+        picks.push({m:'1X2', s:homeName, p:probs.pH, o:hBest.home.odd, b:hBest.home.bookie});
+        picks.push({m:'1X2', s:'X',       p:probs.pD, o:hBest.draw.odd, b:hBest.draw.bookie});
+        picks.push({m:'1X2', s:awayName, p:probs.pA, o:hBest.away.odd, b:hBest.away.bookie});
+        if(tBest.over.odd)  picks.push({m:'O/U 2.5', s:'Over 2.5',  p:probs.pOver25,  o:tBest.over.odd,  b:tBest.over.bookie});
+        if(tBest.under.odd) picks.push({m:'O/U 2.5', s:'Under 2.5', p:probs.pUnder25, o:tBest.under.odd, b:tBest.under.bookie});
       }else{
-        qs('#outFairOdds').textContent = '—';
+        picks=[{m:'1X2',s:homeName,p:probs.pH},{m:'1X2',s:'X',p:probs.pD},{m:'1X2',s:awayName,p:probs.pA},{m:'O/U 2.5',s:'Over 2.5',p:probs.pOver25},{m:'O/U 2.5',s:'Under 2.5',p:probs.pUnder25}];
+        noteOdds = noteOdds || (settings.oddsApiKey? 'Nu am găsit cote pentru ligă.' : 'Adaugă The Odds API Key pentru cote.');
       }
 
-      lastEval = { eventName, market, selection, odds, bookie, stakeManual, pUser:pDisplay, EV, kFull, stakeRec, pBE };
-      qs('#btnAddBet').disabled = false;
+      for(const pk of picks){ if(pk.o){ pk.ev=evPerUnit(pk.p,pk.o); } }
+      picks.sort((a,b)=>(b.ev||-1e9)-(a.ev||-1e9));
+
+      meta.innerHTML = `Meci: <strong>${homeName}</strong> vs <strong>${awayName}</strong> • ${leagueName||'Liga necunoscută'} • ${whenISO? new Date(whenISO).toLocaleString():'data necunoscută'} ${noteOdds? `<span class="badge ml-2">${noteOdds}</span>`:''}`;
+
+      let html='<table class="w-full text-sm"><thead><tr><th class="text-left py-2">Piață</th><th class="text-left py-2">Selecție</th><th class="text-left py-2">Prob.</th><th class="text-left py-2">Cota</th><th class="text-left py-2">Bookie</th><th class="text-left py-2">EV/unit</th></tr></thead><tbody>';
+      for(const pk of picks){ const evTxt=pk.ev!=null? ((pk.ev>=0?'+':'')+pk.ev.toFixed(3)):'—'; const oddTxt=pk.o? pk.o.toFixed(2):'—'; const book=pk.b||'—'; html+=`<tr class="border-t border-white/10"><td class="py-2">${pk.m}</td><td class="py-2">${pk.s}</td><td class="py-2">${(pk.p*100).toFixed(1)}%</td><td class="py-2">${oddTxt}</td><td class="py-2">${book}</td><td class="py-2">${evTxt}</td></tr>`; }
+      html+='</tbody></table>';
+      tableWrap.innerHTML=html; results.classList.remove('hidden'); status.textContent='Gata.';
     }
 
-    // Normalize helpers
-    function doH2(){
-      const o1 = parseNum(qs('#h2_o1').value); const o2 = parseNum(qs('#h2_o2').value);
-      if(!isFinite(o1)||!isFinite(o2) || o1<=1 || o2<=1){ alert('Cote invalide pentru 2-way.'); return; }
-      const r = normalize2way(o1,o2);
-      qs('#h2_out').innerHTML = `Overround: ${(r.overround*100).toFixed(2)}%<br>Prob fair A: ${(r.p1*100).toFixed(2)}% (cota ${r.fair1.toFixed(2)})<br>Prob fair B: ${(r.p2*100).toFixed(2)}% (cota ${r.fair2.toFixed(2)})`;
-      // store helper for quick use (user should set selection accordingly)
-      window.__lastFairForSelection = { p: null, fairOdds: null };
-    }
-    function doH3(){
-      const o1 = parseNum(qs('#h3_o1').value); const oX = parseNum(qs('#h3_oX').value); const o2 = parseNum(qs('#h3_o2').value);
-      if(!isFinite(o1)||!isFinite(oX)||!isFinite(o2) || o1<=1 || oX<=1 || o2<=1){ alert('Cote invalide pentru 1X2.'); return; }
-      const r = normalize3way(o1,oX,o2);
-      qs('#h3_out').innerHTML = `Overround: ${(r.overround*100).toFixed(2)}%<br>`+
-        `1: ${(r.p1*100).toFixed(2)}% (fair ${r.fair1.toFixed(2)}) &nbsp; `+
-        `X: ${(r.pX*100).toFixed(2)}% (fair ${r.fairX.toFixed(2)}) &nbsp; `+
-        `2: ${(r.p2*100).toFixed(2)}% (fair ${r.fair2.toFixed(2)})`;
-      // heuristic: map selection 1/X/2 -> p
-      const sel = qs('#selection').value.trim();
-      let fair = null;
-      if(sel==='1') fair = {p:r.p1, fairOdds:r.fair1};
-      else if(sel==='X' || sel==='x') fair = {p:r.pX, fairOdds:r.fairX};
-      else if(sel==='2') fair = {p:r.p2, fairOdds:r.fair2};
-      window.__lastFairForSelection = fair || { p: null, fairOdds: null };
-    }
-
-    // Add bet
-    function addBet(){
-      if(!lastEval){ alert('Evaluează întâi pariul.'); return; }
-      const { eventName, market, selection, odds, bookie, stakeManual, pUser, EV, kFull, stakeRec, pBE } = lastEval;
-      const stake = (parseFloat(qs('#kellyFraction').value)||0) > 0 ? stakeRec : (isFinite(stakeManual) ? stakeManual : NaN);
-      if(!isFinite(stake) || stake<=0){ alert('Setează un stake (manual sau via Kelly).'); return; }
-      const bet = {
-        id: uuid(),
-        date: new Date().toISOString().slice(0,16),
-        event: eventName || '(fără nume)',
-        market, selection, odds, bookie,
-        stake, pUser, ev: EV, kelly: kFull,
-        status: 'pending', profit: 0
-      };
-      bets.push(bet); saveState(); renderBets(); recomputeStats(); renderChart();
-      // reset add button
-      qs('#btnAddBet').disabled = true;
-    }
-
-    // Export / Import / Reset
-    function exportCSV(){
-      const headers = ['id','date','event','market','selection','odds','bookie','stake','pUser','ev','kelly','status','profit'];
-      const lines = [headers.join(',')].concat(bets.map(b=> headers.map(h=>JSON.stringify(b[h]??'')).join(',')));
-      const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'bets.csv';
-      document.body.appendChild(a); a.click(); a.remove();
-    }
-
-    function importCSV(file){
-      const reader = new FileReader();
-      reader.onload = () => {
-        const text = reader.result;
-        const [headerLine, ...rows] = text.split(/\r?\n/).filter(Boolean);
-        const headers = headerLine.split(',').map(h=>h.replace(/^"|"$/g,''));
-        const arr = rows.map(line=>{
-          const cells = line.match(/("[^"]*"|[^,]+)/g) || [];
-          const obj={}; headers.forEach((h,i)=>{ obj[h]=JSON.parse(cells[i]||'""'); });
-          obj.odds = parseFloat(obj.odds)||NaN;
-          obj.stake = parseFloat(obj.stake)||NaN;
-          obj.pUser = parseFloat(obj.pUser)||NaN;
-          obj.ev = parseFloat(obj.ev)||NaN;
-          obj.kelly = parseFloat(obj.kelly)||NaN;
-          obj.profit = parseFloat(obj.profit)||0;
-          return obj;
-        });
-        bets = arr; saveState(); renderBets(); recomputeStats(); renderChart();
-      };
-      reader.readAsText(file);
-    }
-
-    function resetAll(){
-      if(!confirm('Ești sigur că vrei să resetezi setările și pariurile?')) return;
-      localStorage.removeItem(SKEY.SETTINGS);
-      localStorage.removeItem(SKEY.BETS);
-      settings = { currency:'EUR', bankroll:1000, kellyFraction:0.5 };
-      bets = [];
-      applySettingsToUI(); saveState(); renderBets(); recomputeStats(); renderChart();
-    }
-<!-- ⬇️ Adaugă acest bloc JS chiar înainte de // ====== EVENTS ====== -->
-<script>
-// ====== PREDICTOR (API-FOOTBALL + The Odds API) ======
-function slug(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[^a-z0-9]+/g,' ').trim(); }
-
-async function apif(endpoint, params){
-  const key = settings.apisportsKey;
-  if(!key) throw new Error('Lipsește API-FOOTBALL Key.');
-  const url = 'https://v3.football.api-sports.io'+endpoint + (params? ('?'+new URLSearchParams(params)) : '');
-  const res = await fetch(url, { headers:{ 'x-apisports-key': key } });
-  if(!res.ok) throw new Error('API-FOOTBALL error: '+res.status);
-  return res.json();
-}
-
-async function searchTeamByName(q){
-  const data = await apif('/teams', { search:q });
-  return (data.response||[]).map(x=>({ id:x.team.id, name:x.team.name, country:x.team.country }));
-}
-
-async function getH2H(id1,id2, last=25){
-  const data = await apif('/fixtures/headtohead', { h2h:id1+'-'+id2, last });
-  return data.response||[];
-}
-
-async function getTeamLast(teamId, n=10){
-  const data = await apif('/fixtures', { team:teamId, last:n });
-  return data.response||[];
-}
-
-function computeFormGoals(fixtures, teamId){
-  const played = fixtures.filter(f=> f.goals && f.goals.home!=null && f.goals.away!=null);
-  if(played.length===0) return {scored:1.2, conceded:1.2};
-  let gs=0, gc=0;
-  for(const f of played){
-    const isHome = f.teams.home.id===teamId;
-    const mine = isHome? f.goals.home : f.goals.away;
-    const opp  = isHome? f.goals.away : f.goals.home;
-    gs += mine; gc += opp;
-  }
-  return { scored: gs/played.length, conceded: gc/played.length };
-}
-
-function poissonPMF(lambda,k){ return Math.exp(-lambda) * Math.pow(lambda, k) / factorial(k); }
-const factCache=[1]; function factorial(n){ if(factCache[n]!=null) return factCache[n]; let v=factCache[factCache.length-1]; for(let i=factCache.length;i<=n;i++){ v*=i; factCache[i]=v; } return factCache[n]; }
-function distribution(lambda, max=6){ const arr=[]; for(let i=0;i<=max;i++) arr.push(poissonPMF(lambda,i)); return arr; }
-
-function prob1X2(dh, da){
-  let pH=0,pD=0,pA=0, pOver25=0;
-  for(let i=0;i<dh.length;i++){
-    for(let j=0;j<da.length;j++){
-      const p = dh[i]*da[j];
-      if(i>j) pH+=p; else if(i===j) pD+=p; else pA+=p;
-      if(i+j>=3) pOver25+=p;
-    }
-  }
-  return { pH, pD, pA, pOver25, pUnder25: 1-pOver25 };
-}
-
-function evPerUnit(p, odds){ const b=odds-1; const q=1-p; return p*b - q; }
-
-const ODDS_KEY_MAP = {
-  'premier league':'soccer_epl',
-  'la liga':'soccer_spain_la_liga',
-  'serie a':'soccer_italy_serie_a',
-  'bundesliga':'soccer_germany_bundesliga',
-  'ligue 1':'soccer_france_ligue_one',
-  'uefa champions league':'soccer_uefa_champs_league',
-  'uefa europa league':'soccer_uefa_europa_league',
-  'superliga':'soccer_romania_liga_i',
-  'liga i':'soccer_romania_liga_i'
-};
-
-async function fetchOddsForLeague(key){
-  const url = `https://api.the-odds-api.com/v4/sports/${key}/odds?regions=${encodeURIComponent(settings.oddsRegion||'eu')}&markets=h2h,totals&oddsFormat=decimal&dateFormat=iso&apiKey=${encodeURIComponent(settings.oddsApiKey||'')}`;
-  const res = await fetch(url);
-  if(!res.ok) throw new Error('The Odds API error: '+res.status);
-  return res.json();
-}
-function bestOddsForH2H(event){
-  const acc = { home:{odd:0,bookie:''}, draw:{odd:0,bookie:''}, away:{odd:0,bookie:''} };
-  for(const bk of event.bookmakers||[]){
-    const m = (bk.markets||[]).find(m=>m.key==='h2h'); if(!m) continue;
-    for(const o of m.outcomes||[]){
-      const key = o.name && slug(o.name)===slug(event.home_team)? 'home' : (o.name && o.name.toLowerCase()==='draw'? 'draw':'away');
-      if(o.price>acc[key].odd){ acc[key]={ odd:o.price, bookie:bk.title||bk.key } }
-    }
-  }
-  return acc;
-}
-function bestOddsForTotals(event, line=2.5){
-  let over={odd:0,bookie:''}, under={odd:0,bookie:''};
-  for(const bk of event.bookmakers||[]){
-    const m = (bk.markets||[]).find(m=>m.key==='totals'); if(!m) continue;
-    for(const o of m.outcomes||[]){
-      if(o.point==null || Math.abs(o.point-line)>1e-9) continue;
-      if(o.name==='Over'  && o.price>over.odd)  over ={odd:o.price,  bookie:bk.title||bk.key};
-      if(o.name==='Under' && o.price>under.odd) under={odd:o.price, bookie:bk.title||bk.key};
-    }
-  }
-  return {over,under};
-}
-function findEventByTeams(events, homeName, awayName){
-  const sh = slug(homeName), sa = slug(awayName);
-  return events.find(ev=> slug(ev.home_team)===sh && slug(ev.away_team)===sa );
-}
-
-async function runPredictor(){
-  const status = qs('#predictStatus');
-  const out = qs('#predictOut');
-  out.innerHTML=''; status.textContent='';
-  const q = qs('#predictQuery').value.trim();
-  if(!q){ status.textContent='Scrie "Echipă A vs Echipă B".'; return; }
-  if(!settings.apisportsKey || !settings.oddsApiKey){ status.textContent='Adaugă cheile API în cardul "Integrare date live".'; return; }
-
-  // parse echipe
-  const parts = q.split(/vs|v\.s\.| v | - |–|—/i).map(s=>s.trim()).filter(Boolean);
-  if(parts.length<2){ status.textContent='Format: "Echipă A vs Echipă B".'; return; }
-  const teamA = parts[0], teamB = parts[1];
-  status.textContent='Caut echipele...';
-
-  let t1 = (await searchTeamByName(teamA))[0];
-  let t2 = (await searchTeamByName(teamB))[0];
-  if(!t1 || !t2){ status.textContent='Nu am găsit una dintre echipe.'; return; }
-
-  status.textContent='Găsesc meciul și H2H...';
-  const h2h = await getH2H(t1.id, t2.id, 30);
-  if(h2h.length===0){ status.textContent='Nu am găsit H2H/fixture între echipe.'; return; }
-
-  // Alege viitorul meci dacă există, altfel ultimul jucat
-  const nowTs = Date.now()/1000;
-  const upcoming = h2h.filter(f=> f.fixture && f.fixture.timestamp && f.fixture.timestamp>nowTs)
-                      .sort((a,b)=>a.fixture.timestamp-b.fixture.timestamp)[0];
-  const match = upcoming || h2h.sort((a,b)=>b.fixture.timestamp-a.fixture.timestamp)[0];
-  const homeId = match.teams.home.id, awayId = match.teams.away.id;
-  const homeName = match.teams.home.name, awayName = match.teams.away.name;
-  const leagueName = match.league && match.league.name ? match.league.name : '';
-  const whenISO = match.fixture && match.fixture.date ? match.fixture.date : '';
-
-  status.textContent='Calculez forma & Poisson...';
-  const lastHome = await getTeamLast(homeId, 10);
-  const lastAway = await getTeamLast(awayId, 10);
-  const formH = computeFormGoals(lastHome, homeId);
-  const formA = computeFormGoals(lastAway, awayId);
-  const homeAdv = 0.15;
-  const lambdaH = Math.max(0.1, 0.5*(formH.scored + formA.conceded) + homeAdv);
-  const lambdaA = Math.max(0.1, 0.5*(formA.scored + formH.conceded));
-  const dh = distribution(lambdaH), da = distribution(lambdaA);
-  const probs = prob1X2(dh,da);
-
-  status.textContent='Caut cele mai bune cote...';
-  const oddsKey = ODDS_KEY_MAP[slug(leagueName)] || null;
-  let eventOdds=null;
-  if(oddsKey){
-    const events = await fetchOddsForLeague(oddsKey);
-    eventOdds = findEventByTeams(events, homeName, awayName);
-  } else {
-    status.textContent=`Liga "${leagueName}" nu e mapată (momentan). Afișez doar probabilități.`;
-  }
-
-  const picks=[];
-  if(eventOdds){
-    const h2hBest = bestOddsForH2H(eventOdds);
-    const totBest = bestOddsForTotals(eventOdds, 2.5);
-    picks.push({ market:'1X2', selection:`${homeName}`, p:probs.pH, odds:h2hBest.home.odd, bookie:h2hBest.home.bookie });
-    picks.push({ market:'1X2', selection:'X', p:probs.pD, odds:h2hBest.draw.odd, bookie:h2hBest.draw.bookie });
-    picks.push({ market:'1X2', selection:`${awayName}`, p:probs.pA, odds:h2hBest.away.odd, bookie:h2hBest.away.bookie });
-    if(totBest.over.odd)  picks.push({ market:'O/U 2.5', selection:'Over 2.5',  p:probs.pOver25,  odds:totBest.over.odd,  bookie:totBest.over.bookie });
-    if(totBest.under.odd) picks.push({ market:'O/U 2.5', selection:'Under 2.5', p:probs.pUnder25, odds:totBest.under.odd, bookie:totBest.under.bookie });
-  } else {
-    picks.push({ market:'1X2', selection:`${homeName}`, p:probs.pH });
-    picks.push({ market:'1X2', selection:'X',          p:probs.pD });
-    picks.push({ market:'1X2', selection:`${awayName}`, p:probs.pA });
-    picks.push({ market:'O/U 2.5', selection:'Over 2.5',  p:probs.pOver25 });
-    picks.push({ market:'O/U 2.5', selection:'Under 2.5', p:probs.pUnder25 });
-  }
-
-  for(const pk of picks){ if(pk.odds){ pk.ev = evPerUnit(pk.p, pk.odds); } }
-  picks.sort((a,b)=> (b.ev||-1e9) - (a.ev||-1e9));
-
-  let html = `<div class="mb-2">Meci detectat: <strong>${homeName}</strong> vs <strong>${awayName}</strong> • ${leagueName||'Liga necunoscută'} • ${whenISO? new Date(whenISO).toLocaleString() : 'data necunoscută'}</div>`;
-  html += '<div class="overflow-x-auto">';
-  html += '<table class="table w-full"><thead><tr><th class="py-2 px-2">Piață</th><th class="py-2 px-2">Selecție</th><th class="py-2 px-2">Prob. model</th><th class="py-2 px-2">Cota (best)</th><th class="py-2 px-2">Bookie</th><th class="py-2 px-2">EV/unit</th><th class="py-2 px-2">Acțiune</th></tr></thead><tbody>';
-  for(const pk of picks){
-    const evTxt  = (pk.ev!=null && isFinite(pk.ev))? ((pk.ev>=0?'+':'')+pk.ev.toFixed(3)) : '—';
-    const oddTxt = pk.odds? pk.odds.toFixed(2) : '—';
-    const book   = pk.bookie||'—';
-    html += `<tr><td class="py-2 px-2">${pk.market}</td><td class="py-2 px-2">${pk.selection}</td><td class="py-2 px-2">${(pk.p*100).toFixed(1)}%</td><td class="py-2 px-2">${oddTxt}</td><td class="py-2 px-2">${book}</td><td class="py-2 px-2">${evTxt}</td><td class="py-2 px-2"><button class="btn btn-ghost text-sm" data-prep="1" data-market="${pk.market}" data-sel="${pk.selection}" data-odds="${pk.odds||''}" data-bookie="${book}">Trimite la Evaluator</button></td></tr>`;
-  }
-  html += '</tbody></table></div>';
-  qs('#predictOut').innerHTML = html;
-
-  qsa('[data-prep="1"]', qs('#predictOut')).forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const m = btn.dataset.market, s = btn.dataset.sel, o = parseFloat(btn.dataset.odds)||NaN, b = btn.dataset.bookie||'';
-      qs('#eventName').value = `${homeName} vs ${awayName}`;
-      qs('#market').value    = (m==='1X2'? '1X2' : (m.startsWith('O/U')? '2way':'1X2'));
-      qs('#selection').value = s.replace(`${homeName}`,'1').replace(`${awayName}`,'2');
-      if(isFinite(o)) qs('#odds').value = o.toFixed(2);
-      qs('#bookie').value = b;
-      window.scrollTo({ top: qs('#market').getBoundingClientRect().top + window.scrollY - 120, behavior:'smooth' });
-    });
-  });
-
-  status.textContent = 'Gata.';
-}
-
-// câmpuri API UI
-function applyApiToUI(){
-  const k1 = qs('#apisportsKey'); if(k1) k1.value = settings.apisportsKey||'';
-  const k2 = qs('#oddsApiKey');   if(k2) k2.value = settings.oddsApiKey||'';
-  const r  = qs('#oddsRegion');   if(r)  r.value  = settings.oddsRegion||'eu';
-}
-function readApiFromUI(){
-  const k1 = qs('#apisportsKey'); if(k1) settings.apisportsKey = k1.value.trim();
-  const k2 = qs('#oddsApiKey');   if(k2) settings.oddsApiKey   = k2.value.trim();
-  const r  = qs('#oddsRegion');   if(r)  settings.oddsRegion   = r.value;
-}
-    // ====== EVENTS ======
-    window.addEventListener('DOMContentLoaded', ()=>{
-      loadState();
-      applySettingsToUI();
-      recomputeStats();
-      renderBets();
-      renderChart();
-
-      qs('#btnSaveSettings').addEventListener('click', ()=>{ readSettingsFromUI(); saveState(); recomputeStats(); renderChart(); });
-      qs('#btnEvaluate').addEventListener('click', doEvaluate);
-      qs('#btnAddBet').addEventListener('click', addBet);
-      qs('#btnH2').addEventListener('click', doH2);
-      qs('#btnH3').addEventListener('click', doH3);
-      qs('#filterStatus').addEventListener('change', renderBets);
-      qs('#search').addEventListener('input', renderBets);
-      qs('#btnExport').addEventListener('click', exportCSV);
-      qs('#importFile').addEventListener('change', e=>{ if(e.target.files[0]) importCSV(e.target.files[0]); });
-      qs('#btnReset').addEventListener('click', resetAll);
-    });
+    qs('#btnEvaluate').addEventListener('click',()=>evaluateMatch(qs('#matchInput').value.trim()));
+    qs('#matchInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); qs('#btnEvaluate').click(); } });
   </script>
 </body>
 </html>
-
