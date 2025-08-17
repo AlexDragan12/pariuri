@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pronosticuri Lite</title>
+  <title>Pronosticuri Lite – Auto</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body{background:#0b1220;color:#e5edff;font-family:ui-sans-serif,system-ui,Inter,Segoe UI,Roboto}
@@ -13,52 +13,18 @@
     .btn-primary{background:#4f7cff;color:#fff}
     .hint{color:#8aa0bf}
     .badge{border-radius:999px;padding:3px 8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);font-size:12px}
-    a.link{color:#9db4ff}
   </style>
 </head>
 <body class="min-h-screen">
-  <header class="max-w-3xl mx-auto px-4 py-6 flex items-center justify-between">
-    <div class="flex items-center gap-3">
-      <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">⚽</div>
-      <div>
-        <h1 class="text-xl font-bold">Pronosticuri Lite</h1>
-        <p class="hint text-sm">Scrii meciul → apeși Evaluează → primești pronosticul cu probabilități + cele mai bune cote.</p>
-      </div>
+  <header class="max-w-3xl mx-auto px-4 py-6 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center">⚽</div>
+    <div>
+      <h1 class="text-xl font-bold">Pronosticuri Lite – Auto</h1>
+      <p class="hint text-sm">Introduci meciul ➜ **Evaluează** ➜ primești pronosticul. Fără setări, fără chei API în UI.</p>
     </div>
-    <button id="btnToggleApi" class="btn">⚙️ Setări API</button>
   </header>
 
   <main class="max-w-3xl mx-auto px-4 pb-16">
-    <!-- Setări API (pliabil) -->
-    <section id="apiPanel" class="card p-4 mb-4 hidden">
-      <h2 class="font-semibold mb-2">Setări API</h2>
-      <p class="hint text-sm mb-3">Cheile sunt salvate local în browser. Pentru producție, folosește un proxy/server.</p>
-      <div class="grid md:grid-cols-3 gap-3">
-        <div>
-          <label class="text-sm">API-FOOTBALL Key</label>
-          <input id="apisportsKey" class="input" placeholder="api-sports.io" />
-        </div>
-        <div>
-          <label class="text-sm">The Odds API Key</label>
-          <input id="oddsApiKey" class="input" placeholder="the-odds-api.com" />
-        </div>
-        <div>
-          <label class="text-sm">Regiune cote</label>
-          <select id="oddsRegion" class="input">
-            <option value="eu">EU</option>
-            <option value="uk">UK</option>
-            <option value="us">US</option>
-            <option value="au">AU</option>
-          </select>
-        </div>
-      </div>
-      <div class="mt-3 flex gap-2">
-        <button id="btnSaveApi" class="btn btn-primary">Salvează</button>
-        <span id="saveMsg" class="hint"></span>
-      </div>
-    </section>
-
-    <!-- Formular ultra-simplu -->
     <section class="card p-5">
       <label class="block text-sm mb-1">Meci</label>
       <input id="matchInput" class="input mb-3" placeholder="Ex: FCSB vs CFR Cluj" />
@@ -66,137 +32,57 @@
       <div id="status" class="hint mt-3"></div>
     </section>
 
-    <!-- Rezultate -->
     <section id="results" class="card p-5 mt-5 hidden">
       <div id="matchMeta" class="mb-3 text-sm"></div>
+      <div id="factors" class="mb-3 text-sm"></div>
       <div id="tableWrap" class="overflow-x-auto"></div>
       <div class="mt-3 text-xs hint">Atenție: pronosticul este experimental și nu garantează profit.</div>
     </section>
   </main>
 
   <script>
-    // ===== STATE =====
-    const SKEY = 'plite_settings_v1';
-    let settings = { apisportsKey:'', oddsApiKey:'', oddsRegion:'eu' };
-    try{ const s=JSON.parse(localStorage.getItem(SKEY)||'null'); if(s) settings={...settings,...s}; }catch{}
-    function save(){ localStorage.setItem(SKEY, JSON.stringify(settings)); }
-
-    // ===== UI =====
     const qs = (s,el=document)=>el.querySelector(s);
     const qsa=(s,el=document)=>Array.from(el.querySelectorAll(s));
-    function toggle(el){ el.classList.toggle('hidden'); }
 
-    qs('#btnToggleApi').addEventListener('click',()=>toggle(qs('#apiPanel')));
-    qs('#btnSaveApi').addEventListener('click',()=>{ settings.apisportsKey=qs('#apisportsKey').value.trim(); settings.oddsApiKey=qs('#oddsApiKey').value.trim(); settings.oddsRegion=qs('#oddsRegion').value; save(); qs('#saveMsg').textContent='Salvat.'; setTimeout(()=>qs('#saveMsg').textContent='',1500); });
-    // preload values
-    qs('#apisportsKey').value=settings.apisportsKey||''; qs('#oddsApiKey').value=settings.oddsApiKey||''; qs('#oddsRegion').value=settings.oddsRegion||'eu';
+    async function evaluateMatchClient(query){
+      const status=qs('#status'); const results=qs('#results'); const tableWrap=qs('#tableWrap'); const meta=qs('#matchMeta'); const facts=qs('#factors');
+      results.classList.add('hidden'); status.textContent=''; tableWrap.innerHTML=''; meta.innerHTML=''; facts.innerHTML='';
+      if(!query){ status.textContent='Scrie "Echipă A vs Echipă B".'; return; }
+      try{
+        status.textContent='Caut și calculez…';
+        const res = await fetch('/api/evaluate?match='+encodeURIComponent(query));
+        if(!res.ok) throw new Error('Serverul a răspuns cu '+res.status);
+        const data = await res.json();
 
-    // ===== CORE (Predictor) =====
-    function slug(s){ return (s||'').toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'').replace(/[^a-z0-9]+/g,' ').trim(); }
+        const m = data.match||{}; const w = (data.weather||{}); const inj = data.injuries||{}; const ages = data.ages||{}; const form = data.form||{};
+        const when = m.dateISO? new Date(m.dateISO).toLocaleString() : 'data necunoscută';
+        meta.innerHTML = `Meci: <strong>${m.homeName||'?'} vs ${m.awayName||'?'}</strong> • ${m.leagueName||'Liga necunoscută'} • ${when}${m.venue? ' • '+m.venue : ''}`;
 
-    async function apif(endpoint, params){
-      if(!settings.apisportsKey) throw new Error('Lipsește API-FOOTBALL Key.');
-      const url = 'https://v3.football.api-sports.io'+endpoint + (params? ('?'+new URLSearchParams(params)) : '');
-      const res = await fetch(url, { headers:{ 'x-apisports-key': settings.apisportsKey } });
-      if(!res.ok) throw new Error('API-FOOTBALL: '+res.status);
-      return res.json();
-    }
+        const parts = [];
+        if(w && w.summary){ parts.push(`Vreme: ${w.summary}`); }
+        if(inj && (inj.home!=null || inj.away!=null)){ parts.push(`Accidentări: ${inj.home||0}–${inj.away||0}`); }
+        if(ages && (ages.home||ages.away)){ parts.push(`Vârsta medie: ${ages.home? ages.home.toFixed(1):'–'} vs ${ages.away? ages.away.toFixed(1):'–'}`); }
+        if(form && (form.home||form.away)){ parts.push(`Formă (marcate/primite): ${form.home? form.home.scored.toFixed(2)+'/'+form.home.conceded.toFixed(2):'–'} vs ${form.away? form.away.scored.toFixed(2)+'/'+form.away.conceded.toFixed(2):'–'}`); }
+        facts.innerHTML = parts.length? parts.join(' • ') : '';
 
-    async function searchTeamByName(q){
-      const data = await apif('/teams', { search:q });
-      return (data.response||[]).map(x=>({ id:x.team.id, name:x.team.name }));
-    }
-    async function getH2H(id1,id2,last=25){
-      const data = await apif('/fixtures/headtohead', { h2h:id1+'-'+id2, last });
-      return data.response||[];
-    }
-    async function getTeamLast(teamId,n=10){
-      const data = await apif('/fixtures', { team:teamId, last:n });
-      return data.response||[];
-    }
-
-    function computeFormGoals(fixtures, teamId){
-      const played = fixtures.filter(f=> f.goals && f.goals.home!=null && f.goals.away!=null);
-      if(played.length===0) return {scored:1.2, conceded:1.2};
-      let gs=0,gc=0; for(const f of played){ const isHome=f.teams.home.id===teamId; const mine=isHome?f.goals.home:f.goals.away; const opp=isHome?f.goals.away:f.goals.home; gs+=mine; gc+=opp; }
-      return { scored: gs/played.length, conceded: gc/played.length };
-    }
-    function poissonPMF(lambda,k){ return Math.exp(-lambda)*Math.pow(lambda,k)/factorial(k); }
-    const fact=[1]; function factorial(n){ if(fact[n]!=null) return fact[n]; let v=fact[fact.length-1]; for(let i=fact.length;i<=n;i++){ v*=i; fact[i]=v; } return fact[n]; }
-    function distribution(lambda,max=6){ const arr=[]; for(let i=0;i<=max;i++) arr.push(poissonPMF(lambda,i)); return arr; }
-    function prob1X2(dh,da){ let pH=0,pD=0,pA=0,pOver25=0; for(let i=0;i<dh.length;i++){ for(let j=0;j<da.length;j++){ const p=dh[i]*da[j]; if(i>j)pH+=p; else if(i===j)pD+=p; else pA+=p; if(i+j>=3)pOver25+=p; } } return {pH,pD,pA,pOver25,pUnder25:1-pOver25}; }
-
-    const ODDS_KEY_MAP={
-      'premier league':'soccer_epl','la liga':'soccer_spain_la_liga','serie a':'soccer_italy_serie_a','bundesliga':'soccer_germany_bundesliga','ligue 1':'soccer_france_ligue_one','uefa champions league':'soccer_uefa_champs_league','uefa europa league':'soccer_uefa_europa_league','superliga':'soccer_romania_liga_i','liga i':'soccer_romania_liga_i'};
-    async function fetchOddsForLeague(key){
-      if(!settings.oddsApiKey) throw new Error('Lipsește The Odds API Key.');
-      const url=`https://api.the-odds-api.com/v4/sports/${key}/odds?regions=${encodeURIComponent(settings.oddsRegion||'eu')}&markets=h2h,totals&oddsFormat=decimal&dateFormat=iso&apiKey=${encodeURIComponent(settings.oddsApiKey)}`;
-      const res=await fetch(url); if(!res.ok) throw new Error('The Odds API: '+res.status); return res.json();
-    }
-    function bestOddsForH2H(event){ const acc={home:{odd:0,bookie:''},draw:{odd:0,bookie:''},away:{odd:0,bookie:''}}; for(const bk of event.bookmakers||[]){ const m=(bk.markets||[]).find(m=>m.key==='h2h'); if(!m) continue; for(const o of m.outcomes||[]){ const key=o.name && slug(o.name)===slug(event.home_team)?'home':(o.name && o.name.toLowerCase()==='draw'?'draw':'away'); if(o.price>acc[key].odd){ acc[key]={odd:o.price,bookie:bk.title||bk.key}; } } } return acc; }
-    function bestOddsForTotals(event,line=2.5){ let over={odd:0,bookie:''},under={odd:0,bookie:''}; for(const bk of event.bookmakers||[]){ const m=(bk.markets||[]).find(m=>m.key==='totals'); if(!m) continue; for(const o of m.outcomes||[]){ if(o.point==null||Math.abs(o.point-line)>1e-9) continue; if(o.name==='Over'&&o.price>over.odd) over={odd:o.price,bookie:bk.title||bk.key}; if(o.name==='Under'&&o.price>under.odd) under={odd:o.price,bookie:bk.title||bk.key}; } } return {over,under}; }
-    function findEventByTeams(events,homeName,awayName){ const sh=slug(homeName), sa=slug(awayName); return events.find(ev=> slug(ev.home_team)===sh && slug(ev.away_team)===sa ); }
-    function evPerUnit(p,odds){ const b=odds-1, q=1-p; return p*b - q; }
-
-    async function evaluateMatch(q){
-      const status=qs('#status'); const results=qs('#results'); const tableWrap=qs('#tableWrap'); const meta=qs('#matchMeta');
-      results.classList.add('hidden'); status.textContent=''; tableWrap.innerHTML=''; meta.innerHTML='';
-      if(!q){ status.textContent='Scrie "Echipă A vs Echipă B".'; return; }
-      if(!settings.apisportsKey){ status.textContent='Completează API-FOOTBALL Key (⚙️ Sus-dreapta).'; return; }
-
-      // parse echipe
-      const parts=q.split(/vs|v\.s\.| v | - |–|—/i).map(s=>s.trim()).filter(Boolean);
-      if(parts.length<2){ status.textContent='Format: "Echipă A vs Echipă B".'; return; }
-      const teamA=parts[0], teamB=parts[1];
-      status.textContent='Caut echipele...';
-      const t1=(await searchTeamByName(teamA))[0]; const t2=(await searchTeamByName(teamB))[0];
-      if(!t1||!t2){ status.textContent='Nu am găsit una dintre echipe.'; return; }
-
-      status.textContent='Găsesc H2H și forma...';
-      const h2h=await getH2H(t1.id,t2.id,30);
-      if(h2h.length===0){ status.textContent='Nu am găsit H2H/fixture.'; return; }
-      const nowTs=Date.now()/1000;
-      const upcoming=h2h.filter(f=>f.fixture&&f.fixture.timestamp>nowTs).sort((a,b)=>a.fixture.timestamp-b.fixture.timestamp)[0];
-      const match=upcoming||h2h.sort((a,b)=>b.fixture.timestamp-a.fixture.timestamp)[0];
-      const homeId=match.teams.home.id, awayId=match.teams.away.id;
-      const homeName=match.teams.home.name, awayName=match.teams.away.name;
-      const leagueName=match.league&&match.league.name?match.league.name:'';
-      const whenISO=match.fixture&&match.fixture.date?match.fixture.date:'';
-
-      const lastHome=await getTeamLast(homeId,10); const lastAway=await getTeamLast(awayId,10);
-      const formH=computeFormGoals(lastHome,homeId); const formA=computeFormGoals(lastAway,awayId);
-      const homeAdv=0.15; const lambdaH=Math.max(0.1,0.5*(formH.scored+formA.conceded)+homeAdv); const lambdaA=Math.max(0.1,0.5*(formA.scored+formH.conceded));
-      const dh=distribution(lambdaH), da=distribution(lambdaA); const probs=prob1X2(dh,da);
-
-      // odds
-      let picks=[]; let eventOdds=null; let noteOdds='';
-      const key=ODDS_KEY_MAP[slug(leagueName)]||null;
-      if(settings.oddsApiKey && key){ try{ const events=await fetchOddsForLeague(key); eventOdds=findEventByTeams(events,homeName,awayName); }catch(e){ noteOdds=e.message; } }
-
-      if(eventOdds){
-        const hBest=bestOddsForH2H(eventOdds); const tBest=bestOddsForTotals(eventOdds,2.5);
-        picks.push({m:'1X2', s:homeName, p:probs.pH, o:hBest.home.odd, b:hBest.home.bookie});
-        picks.push({m:'1X2', s:'X',       p:probs.pD, o:hBest.draw.odd, b:hBest.draw.bookie});
-        picks.push({m:'1X2', s:awayName, p:probs.pA, o:hBest.away.odd, b:hBest.away.bookie});
-        if(tBest.over.odd)  picks.push({m:'O/U 2.5', s:'Over 2.5',  p:probs.pOver25,  o:tBest.over.odd,  b:tBest.over.bookie});
-        if(tBest.under.odd) picks.push({m:'O/U 2.5', s:'Under 2.5', p:probs.pUnder25, o:tBest.under.odd, b:tBest.under.bookie});
-      }else{
-        picks=[{m:'1X2',s:homeName,p:probs.pH},{m:'1X2',s:'X',p:probs.pD},{m:'1X2',s:awayName,p:probs.pA},{m:'O/U 2.5',s:'Over 2.5',p:probs.pOver25},{m:'O/U 2.5',s:'Under 2.5',p:probs.pUnder25}];
-        noteOdds = noteOdds || (settings.oddsApiKey? 'Nu am găsit cote pentru ligă.' : 'Adaugă The Odds API Key pentru cote.');
+        const picks = data.picks||[];
+        let html = '<table class="w-full text-sm"><thead><tr><th class="text-left py-2">Piață</th><th class="text-left py-2">Selecție</th><th class="text-left py-2">Prob.</th><th class="text-left py-2">Cota</th><th class="text-left py-2">Bookie</th><th class="text-left py-2">EV/unit</th></tr></thead><tbody>';
+        for(const pk of picks){
+          const evTxt = pk.ev!=null? ((pk.ev>=0?'+':'')+pk.ev.toFixed(3)) : '—';
+          const oddTxt= pk.odds? pk.odds.toFixed(2) : '—';
+          const prob  = pk.p!=null? (pk.p*100).toFixed(1)+'%' : '—';
+          html += `<tr class="border-t border-white/10"><td class="py-2">${pk.market}</td><td class="py-2">${pk.selection}</td><td class="py-2">${prob}</td><td class="py-2">${oddTxt}</td><td class="py-2">${pk.bookie||'—'}</td><td class="py-2">${evTxt}</td></tr>`;
+        }
+        html += '</tbody></table>';
+        tableWrap.innerHTML = html;
+        results.classList.remove('hidden');
+        status.textContent = data.note || 'Gata.';
+      }catch(e){
+        status.textContent = 'Eroare: '+e.message+ ' — verifică dacă serverul /api/evaluate este pornit.';
       }
-
-      for(const pk of picks){ if(pk.o){ pk.ev=evPerUnit(pk.p,pk.o); } }
-      picks.sort((a,b)=>(b.ev||-1e9)-(a.ev||-1e9));
-
-      meta.innerHTML = `Meci: <strong>${homeName}</strong> vs <strong>${awayName}</strong> • ${leagueName||'Liga necunoscută'} • ${whenISO? new Date(whenISO).toLocaleString():'data necunoscută'} ${noteOdds? `<span class="badge ml-2">${noteOdds}</span>`:''}`;
-
-      let html='<table class="w-full text-sm"><thead><tr><th class="text-left py-2">Piață</th><th class="text-left py-2">Selecție</th><th class="text-left py-2">Prob.</th><th class="text-left py-2">Cota</th><th class="text-left py-2">Bookie</th><th class="text-left py-2">EV/unit</th></tr></thead><tbody>';
-      for(const pk of picks){ const evTxt=pk.ev!=null? ((pk.ev>=0?'+':'')+pk.ev.toFixed(3)):'—'; const oddTxt=pk.o? pk.o.toFixed(2):'—'; const book=pk.b||'—'; html+=`<tr class="border-t border-white/10"><td class="py-2">${pk.m}</td><td class="py-2">${pk.s}</td><td class="py-2">${(pk.p*100).toFixed(1)}%</td><td class="py-2">${oddTxt}</td><td class="py-2">${book}</td><td class="py-2">${evTxt}</td></tr>`; }
-      html+='</tbody></table>';
-      tableWrap.innerHTML=html; results.classList.remove('hidden'); status.textContent='Gata.';
     }
 
-    qs('#btnEvaluate').addEventListener('click',()=>evaluateMatch(qs('#matchInput').value.trim()));
+    qs('#btnEvaluate').addEventListener('click',()=>evaluateMatchClient(qs('#matchInput').value.trim()));
     qs('#matchInput').addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); qs('#btnEvaluate').click(); } });
   </script>
 </body>
